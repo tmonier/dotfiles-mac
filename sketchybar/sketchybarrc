@@ -1,0 +1,134 @@
+#!/bin/bash
+
+# This is a demo config to showcase some of the most important commands.
+# It is meant to be changed and configured, as it is intentionally kept sparse.
+# For a (much) more advanced configuration example see my dotfiles:
+# https://github.com/FelixKratz/dotfiles
+
+PLUGIN_DIR="$CONFIG_DIR/plugins"
+ITEM_DIR="$CONFIG_DIR/items"
+source "$CONFIG_DIR/colors.sh" # Loads all defined colors
+##### Bar Appearance #####
+# Configuring the general appearance of the bar.
+# These are only some of the options available. For all options see:
+# https://felixkratz.github.io/SketchyBar/config/bar
+# If you are looking for other colors, see the color picker:
+# https://felixkratz.github.io/SketchyBar/config/tricks#color-picker
+
+sketchybar --bar position=top height=37 blur_radius=0 color=0x0000000000
+
+##### Changing Defaults #####
+# We now change some default values, which are applied to all further items.
+# For a full list of all available item properties see:
+# https://felixkratz.github.io/SketchyBar/config/items
+default=(
+  padding_left=5
+  padding_right=5
+  icon.font="Hack Nerd Font:Bold:15.0"
+  label.font="JetBrains Mono:Bold:12.0"
+  icon.color=$WHITE
+  label.color=$WHITE
+  background.color=$ITEM_BG_COLOR
+  background.corner_radius=5
+  background.height=24
+  icon.padding_left=4
+  icon.padding_right=10
+  label.padding_left=4
+  label.padding_right=10
+)
+sketchybar --default "${default[@]}"
+##### Adding aeropsace layouts #####
+# Add the aerospace events we specified in aerospace.toml
+sketchybar --add event aerospace_workspace_change
+sketchybar --add event aerospace_monitor_change
+
+for sid in $(aerospace list-workspaces --all); do
+  sketchybar --add item space.$sid left \
+    --subscribe space.$sid aerospace_workspace_change \
+    --set space.$sid \
+    display="$(
+      v=$(aerospace list-windows --workspace "$sid" --format "%{monitor-appkit-nsscreen-screens-id}" | cut -c1)
+      echo "${v:-1}"
+    )" \
+    drawing=off \
+    background.color=0x44ffffff \
+    background.corner_radius=5 \
+    background.drawing=on \
+    background.border_color=0xAAFFFFFF \
+    background.border_width=0 \
+    background.height=25 \
+    icon="$sid" \
+    icon.padding_left=10 \
+    icon.shadow.distance=4 \
+    icon.shadow.color=0xA0000000 \
+    label.font="sketchybar-app-font:Regular:16.0" \
+    label.padding_right=20 \
+    label.padding_left=0 \
+    label.y_offset=-1 \
+    label.shadow.drawing=off \
+    label.shadow.color=0xA0000000 \
+    label.shadow.distance=4 \
+    click_script="aerospace workspace $sid" \
+    script="$CONFIG_DIR/plugins/aerospace.sh $sid"
+done
+
+# Load Icons on startup
+for mid in $(aerospace list-monitors | cut -c1); do
+  for sid in $(aerospace list-workspaces --monitor $mid --empty no); do
+  apps=$(aerospace list-windows --workspace "$sid" | awk -F'|' '{gsub(/^ *| *$/, "", $2); print $2}')
+
+  sketchybar --set space.$sid drawing=on
+
+  icon_strip=" "
+  if [ "${apps}" != "" ]; then
+    while read -r app; do
+      icon_strip+=" $($CONFIG_DIR/plugins/icon_map_fn.sh "$app")"
+    done <<<"${apps}"
+  else
+    icon_strip=""
+  fi
+  sketchybar --set space.$sid label="$icon_strip"
+  done
+done
+
+#!/bin/bash
+
+CONFIG_DIR="$HOME/.config/sketchybar"
+
+update_space_icons() {
+    local sid=$1
+    local apps=$(aerospace list-windows --workspace "$sid" | awk -F'|' '{gsub(/^ *| *$/, "", $2); print $2}')
+
+    sketchybar --set space.$sid drawing=on
+
+    if [ "${apps}" != "" ]; then
+        icon_strip=" "
+        while read -r app; do
+            icon_strip+=" $($CONFIG_DIR/plugins/icon_map_fn.sh "$app")"
+        done <<<"${apps}"
+    else
+        icon_strip=""
+    fi
+    sketchybar --set space.$sid label="$icon_strip"
+}
+
+# Update all workspaces to ensure clean state
+for monitor in $(aerospace list-monitors --format "%{monitor-appkit-nsscreen-screens-id}"); do
+    for sid in $(aerospace list-workspaces --monitor "$monitor"); do
+        update_space_icons "$sid"
+    done
+done
+
+# -- Left Side Items --
+source $ITEM_DIR/front_app.sh
+source $ITEM_DIR/spaces.sh
+
+# --- Right Side Items ---
+source $ITEM_DIR/calendar.sh
+source $ITEM_DIR/volume.sh
+source $ITEM_DIR/battery.sh
+sketchybar --add item wifi right \
+           --set wifi icon="􀙇" label="-- / --" update_freq=2 script="$PLUGIN_DIR/wifi.sh" \
+                 background.drawing=on
+##### Force all scripts to run the first time (never do this in a script) #####
+sketchybar --update
